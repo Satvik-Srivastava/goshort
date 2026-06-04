@@ -1,8 +1,11 @@
 package routes
 
 import (
+	"os"
+	"strconv"
 	"time"
 
+	"github.com/Satvik-Srivastava/goshort/database"
 	"github.com/Satvik-Srivastava/goshort/helpers"
 	"github.com/gofiber/fiber/v2"
 )
@@ -40,6 +43,25 @@ func ShortenURL(c *fiber.Ctx) error{
 	we will decrement the credit(10) by 1 whenever the user uses our services
 	*/	
 
+	redisDBClient := database.CreateClient(1)
+	defer redisDBClient.Close()
+	// redis is a key-value pair databse
+	val, err := redisDBClient.Get(database.Ctx, c.IP()).Result()
+
+	if err == redis.Nil{
+		// saving the data as "ip-address":"apiquota" and time left to reset
+		_ = redisDBClient.Set(database.Ctx, c.IP(), os.Getenv("API_QUOTA"), 30*60*time.Second).Err()
+	}else{
+		val, _ = redisDBClient.Get(database.Ctx, c.IP()).Result()
+		valIn, _ := strconv.Atoi(val)
+		if valIn <= 0{
+			limit, _ := redisDBClient.TTL(database.Ctx, c.IP()).Result()
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error":"rate limit exceeded",
+				"rate_limit_reset":limit/time.Nanosecond/time.Minute,
+			})
+		}
+	}
 
 
 	// check if the url given by the user is actually correct or not
@@ -54,4 +76,5 @@ func ShortenURL(c *fiber.Ctx) error{
 
 	//enfore https, ssl
 	body.URL = helpers.EnforceHTTP(body.URL)
+	redisDBClient.Decr(database.Ctx, c.IP())
 }
