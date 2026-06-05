@@ -1,30 +1,48 @@
-package api
+package main
 
 import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/Satvik-Srivastava/goshort/routes"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
-	"gorm.io/gorm/logger"
 )
 
 func setupRoutes(app *fiber.App) {
 	app.Get("/:url", routes.ResolveURL)
-	app.Post("/api/v1", routes.ShortenURL)
+	app.Post("/api/v1/shorten", routes.ShortenURL) // Better route
 }
 
 func main() {
-	err := godotenv.Load()
-
-	if err != nil {
-		fmt.Println(err)
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("Warning: No .env file found or error loading it")
 	}
 
-	app := fiber.New()
-	app.Use(logger.New())
+	// Get port from env with fallback
+	port := os.Getenv("APP_PORT")
+	if port == "" {
+		port = "3000" // default port
+	}
+	if strings.HasPrefix(port, ":") {
+		port = strings.TrimPrefix(port, ":")
+	}
+
+	app := fiber.New(fiber.Config{
+		AppName: "GoShort - URL Shortener",
+	})
+
+	// Use Fiber's built-in logger middleware
+	app.Use(logger.New(logger.Config{
+		Format: "[${ip}] ${status} - ${method} ${path}\n",
+	}))
+
 	setupRoutes(app)
-	log.Fatal(app.Listen(os.Getenv("APP_PORT")))
+
+	log.Printf("Server running on port %s", port)
+	log.Fatal(app.Listen(":" + port))
 }
