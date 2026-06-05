@@ -1,11 +1,27 @@
 version: '3'
 services:
+  frontend:
+    build: frontend
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api
+    environment:
+      - REACT_APP_API_URL=http://localhost:3000/api/v1/shorten
+  
   api:
     build: api
     ports:
       - "3000:3000"
     depends_on:
       - db
+    environment:
+      - DB_ADDRESS=db:6379
+      - DB_PASS=
+      - APP_PORT=3000
+      - DOMAIN=localhost:3000
+      - API_QUOTA=10
+  
   db:
     build: db
     ports:

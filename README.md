@@ -1,84 +1,79 @@
 # GoShort
 
-GoShort is a simple URL shortening service built with Go, Fiber, Redis, and Docker.
+GoShort is a lightweight URL shortener: a Go/Fiber backend with Redis storage, and a React + Tailwind frontend served by Nginx in Docker.
 
 ## What we built
 
-This project provides a backend API that accepts a long URL and returns a shortened URL. When a user opens the shortened link, the service redirects to the original URL.
+The stack now includes a complete frontend that connects to the existing backend API. The system provides:
+- `POST /api/v1/shorten` — create a short URL
+- `GET /:url` — resolve the short URL and redirect to the original target
+- Rate limiting using Redis
+- Expiry support for shortened links
+- A minimal, interactive React frontend (paste a URL, optionally provide a custom short slug, choose expiry, get a short link)
 
-The service includes:
-- `POST /api/v1/shorten` to create a short URL
-- `GET /:url` to resolve the short URL and redirect to the original target
-- rate limiting using Redis
-- expiry support for shortened links
+## Frontend
 
-## What was wrong and how it was fixed
+- Built with React 19 and Tailwind CSS (v3).
+- Built UI features: animated inputs, loading state, success/error notifications, copy-to-clipboard, open-in-new-tab, and a compact rate-limit display.
+- Served by Nginx (default at port `3001`) with the API proxied at `/api/` → `http://api:3000` inside Docker.
 
-While building and running the project, several issues were identified and resolved:
+## What was fixed (summary)
 
-1. Docker build errors
-   - The API Dockerfile used an invalid `adduser` command in the second stage. This was fixed by creating a proper user with `adduser -S -D -H appuser`.
-   - The Go build stage was running `go build` outside of the copied source directory. Adding `WORKDIR /build` before `go build` ensured the module and source files were available.
+- Docker build and user creation issues in the API image were fixed (correct `adduser` usage).
+- Go build now runs inside the correct `WORKDIR` so `go.mod` is found.
+- Port normalization: `.env` `APP_PORT` was normalized to avoid double-colon listen addresses.
+- Redis lookup logic for redirects was fixed so successful lookups redirect correctly.
+- Custom `custom_short` values are normalized to store only the slug portion.
 
-2. Port configuration bug
-   - `APP_PORT` in `.env` was set to `:3000`, which caused Fiber to build an invalid listen address like `::3000`. The value was normalized to `3000` and the code now strips any leading colon before listening.
+## How to run the full stack (local, Docker Compose)
 
-3. Redirect handler logic bug
-   - The resolve route incorrectly treated every successful Redis lookup as if the short code was missing. The lookup logic was corrected so the service only returns `404` when Redis returns `redis.Nil`.
-
-4. Custom short URL normalization
-   - User-provided `custom_short` values like `localhost:3000/aa99fe` were converted to just the short slug `aa99fe`, so the stored key and returned redirect URL now work consistently.
-
-## Technologies used
-
-- Go
-- Fiber web framework
-- Redis (for storage and rate limiting)
-- Docker
-- Docker Compose
-- Alpine Linux base images
-- Go modules (`go.mod`)
-
-## How it works
-
-1. The client sends a JSON payload to `POST /api/v1/shorten`.
-2. The service validates the URL and checks rate limits.
-3. It creates a short key and stores the mapping in Redis.
-4. The response includes a shortened URL.
-5. When a client requests the short URL, the service looks it up in Redis and redirects to the original URL.
-
-## Setup and run
-
-From the project root:
+From the project root you can build and run all services (api, frontend, redis) with one command. This will build images and start containers:
 
 ```bash
-sudo docker compose build api
-sudo docker compose up -d
+sudo docker compose up -d --build
 ```
 
-Then test the API with Postman or curl:
+Services and default ports:
+- Frontend (Nginx serving the React app): http://localhost:3001
+- API (Go/Fiber): http://localhost:3000
+- Redis: 6379 (internal container, exposed when using compose)
+
+If you only change frontend code and want to rebuild it:
+
+```bash
+sudo docker compose build frontend --no-cache
+sudo docker compose up -d frontend
+```
+
+Example API request (create short URL):
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/shorten \
   -H "Content-Type: application/json" \
-  -d '{"url":"https://example.com"}'
+  -d '{"url":"https://example.com", "expiry":24}'
 ```
 
-The response will include a `custom_short` or generated short link. Open that link in a browser to verify redirection.
+The response contains the shortened URL and metadata.
 
-## Future scaling ideas
+## Development notes
 
-This project can scale in several ways:
+- Frontend is compatible with React 19; the app uses `ReactDOM.createRoot(...)`.
+- Tailwind v3 is used to avoid PostCSS plugin compatibility issues.
+- Nginx config contains the SPA fallback (`try_files`) and proxies `/api/` to the API service.
 
-- Move from a single Redis instance to a Redis cluster for higher availability and larger dataset support.
-- Add persistent storage for analytics and long-term history beyond Redis expiry.
-- Add authentication and user-specific URLs so users can manage their own shortened links.
-- Use a dedicated load balancer and horizontally scale API containers.
-- Add metrics, monitoring, and observability for production readiness.
-- Support a custom domain service and vanity URL management.
+## Future enhancements
 
-## Notes
+- Analytics and click counts
+- User accounts to manage links
+- QR code generation and preview cards
+- Vanity domains and custom domains support
 
-- The current implementation is focused on backend URL shortening and redirection.
-- The dockerized setup makes it easy to run locally.
-- The project is ready for extension with frontend, analytics, and production-grade deployment.
+## Contributing / Workflow
+
+1. Create a branch for your change: `git checkout -b feature/your-change`.
+2. Make changes and run `sudo docker compose up -d --build` to test locally.
+3. Commit and push your branch, then open a pull request.
+
+---
+
+If you want, I can push this README update to GitHub on a branch and open a PR for you.
